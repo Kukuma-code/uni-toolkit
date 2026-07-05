@@ -1,0 +1,90 @@
+{
+  "_comment": "symcheck 期待値。present/absent は demangle 名の空白無視部分一致。banned/allowed は raw/dem 双方に部分一致。値は tests/symcheck/README.md 参照。",
+  "golden": "golden/symbols.json",
+  "objects": {
+    "inherit": {
+      "_subject": "汎用継承フィクスチャ probe_inherit.cpp",
+      "present": [
+        "cell_<long, holder_<long>, counter_<long>>::put(long)",
+        "cell_<long, holder_<long>, counter_<long>>::sum() const",
+        "cell_<long, holder_<long>, counter_<long>>::cell_(long)",
+        "holder_<long>::get() const",
+        "holder_<long>::set(long)",
+        "counter_<long>::tick()",
+        "counter_<long>::count() const",
+        "node_<long>::node_(long)",
+        "linkable_<node_<long>>::link(node_<long>*)",
+        "linkable_<node_<long>>::next() const"
+      ],
+      "absent": [
+        "holder_<long>::operator+(",
+        "holder_<long>::operator==(",
+        "holder_<long>::doubled()",
+        "counter_<long>::reset()",
+        "cell_<long, holder_<long>, counter_<long>>::clone()"
+      ],
+      "allowed_undefined": [],
+      "banned_undefined": [
+        "_gets",
+        "_system",
+        "_popen",
+        "_strcpy",
+        "_strcat",
+        "_sprintf",
+        "_scanf",
+        "_execl",
+        "_execv"
+      ]
+    },
+    "uni": {
+      "_subject": "本番コード uni__<long,long*> probe_uni.cpp",
+      "present": [
+        "uni__<long, long*>::uni__(long)",
+        "uni__<long, long*>::operator[](long)",
+        "uni__<long, long*>::is_qty() const",
+        "uni__<long, long*>::~uni__()",
+        "check_qty<long>(long, long, long*)",
+        "bad_range::bad_range("
+      ],
+      "absent": [
+        "uni__<long, long*>::clone()",
+        "uni__<long, long*>::clonep()",
+        "uni__<long, long*>::operator/(",
+        "uni__<long, long*>::operator*(uni__<long, long*>",
+        "uni__<long, long*>::operator==(",
+        "uni__<long, long*>::operator+(long const&)"
+      ],
+      "allowed_undefined": [
+        "operator new",
+        "operator delete",
+        "__cxa_",
+        "_Unwind_",
+        "__gxx_personality",
+        "__clang_call_terminate",
+        "std::exception",
+        "std::terminate",
+        "typeinfo",
+        "vtable",
+        "__cxxabiv1"
+      ],
+      "banned_undefined": [
+        "_gets",
+        "_system",
+        "_popen",
+        "_strcpy",
+        "_strcat",
+        "_sprintf",
+        "_scanf",
+        "_execl",
+        "_execv"
+      ],
+      "require_together": [
+        ["uni__<long, long*>::operator[](long)", "check_qty", "bad_range"]
+      ]
+    }
+  },
+  "source_scan": {
+    "roots": ["src"],
+    "allow_paths": []
+  }
+}

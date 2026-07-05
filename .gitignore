@@ -1,0 +1,6 @@
+build/
+build_asan/
+build*/
+compile_commands.json
+.cache/
+.DS_Store
