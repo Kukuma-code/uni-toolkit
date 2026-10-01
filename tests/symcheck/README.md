@@ -7,7 +7,12 @@ template class は「仕様書」であり、実オブジェクトは常駐し�
 検証方針は姉妹プロジェクト cpp_rewriter を踏襲する:
 
 - **(A) golden スナップショット回帰**: 各被験体の defined シンボル集合を
-  `golden/symbols.json` に固定。増減したら FAIL（`--update` で再生成）。
+  `golden/symbols.<tag>.json` に固定。増減したら FAIL（`--update` で再生成）。
+  `<tag>` は CTest が渡す `<OS>-<CPU>-<コンパイラ ID>`（例 `Darwin-arm64-AppleClang`）。
+  実体化と demangle の綴りはツールチェインで変わるので、**別ツールチェインの golden と
+  比べない・上書きしない**。初めてのツールチェインでは golden が新規作成され
+  （= その回は回帰を見ていない）、作られたファイルをコミットして以後の基準にする。
+  libc++ の abi タグ（`[abi:nqe220106]` 等）は比較から落とす（版の綴りで、実体化の増減ではない）。
 - **(B) 不変条件**: present / absent / 依存面 / 危険関数 / 境界検査の常駐。
 
 「外部正解が無いので、現状より悪化したときだけ FAIL」。
@@ -33,7 +38,9 @@ tests/symcheck/
   probe_uni.cpp        被験体: 本番 uni__<long,long*> の配列実体化・使う想定だけ
   symcheck.py          ハーネス本体（標準ライブラリ + nm/c++filt のみ）
   spec.json            期待値（present/absent/allowed_undefined/banned/require_together）
-  golden/symbols.json  defined シンボル集合のスナップショット（回帰用・コミット対象）
+  golden/symbols.<tag>.json  defined シンボル集合のスナップショット（ツールチェイン別・コミット対象）
+tests/test_symcheck_portable.py  symcheck 自体の不変条件（Mach-O/ELF で危険関数検出が空にならない・
+                                 abi タグで golden が落ちない。ctest: symcheck_portable）
 ```
 
 被験体 probe は「使う想定のメソッドだけ」を呼ぶ最小 TU。どれを使うかを probe が
@@ -55,8 +62,10 @@ python3 tests/symcheck/symcheck.py \
   --spec tests/symcheck/spec.json \
   --object inherit=build/tests/probe_inherit.o \
   --object uni=build/tests/probe_uni.o \
-  --src-root src --update
+  --src-root src --golden-tag Darwin-arm64-AppleClang --update
 ```
+
+`--golden-tag` を省くと `golden/symbols.json`（札なし）を読み書きする。CTest は常に札付き。
 
 ## spec.json の書き方
 
@@ -66,6 +75,8 @@ python3 tests/symcheck/symcheck.py \
 - `allowed_undefined`: undefined シンボルの許可リスト（raw/dem 双方に部分一致）。
   ここに無い外部依存が出たら「攻撃面の拡大」として FAIL。
 - `banned_undefined`: 明示的な危険関数の denylist（belt-and-suspenders）。
+  **Mach-O の綴り（`_strcpy`）で書く。** symcheck は ELF の raw 名に `_` を前置して
+  同じ綴りに揃えてから照合する（揃えないと Linux では検査が黙って空になる）。
 - `require_together`: `[A, B, C]` = A が在れば B と C も無ければ FAIL。
   境界検査の常駐（`operator[]` を使うなら `check_qty` / `bad_range` が在る）に使う。
 

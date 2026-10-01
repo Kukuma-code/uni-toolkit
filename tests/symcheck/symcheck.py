@@ -34,11 +34,21 @@ import subprocess
 import sys
 
 WS_RE = re.compile(r"\s+")
+ABI_TAG_RE = re.compile(r"\[abi:[^\]]*\]")
 
 
 def norm(s):
     """空白を畳んで比較を安定させる（demangle の空白差を吸収）。"""
     return WS_RE.sub("", s)
+
+
+def golden_name(dem):
+    """golden の比較・保存に使う名前。libc++ の abi タグ（[abi:nqe210106] 等）を落とす。
+
+    abi タグは標準ライブラリの版の綴りで、実体化の増減ではない。残すと Xcode 更新
+    だけで golden が「増加 1・減少 1」で落ちる（2026-10-01 実測: nqe210106 -> nqe220106）。
+    """
+    return ABI_TAG_RE.sub("", dem)
 
 
 def run(cmd, **kw):
@@ -62,11 +72,22 @@ def demangle(names):
 DEFINED_TYPES = set("TtWwSsDdBbRrVvGg")
 
 
+def is_elf(obj):
+    with open(obj, "rb") as f:
+        return f.read(4) == b"\x7fELF"
+
+
 def read_symbols(obj):
     """nm -g の出力を defined / undefined に分類。demangle 済みを付す。
 
+    raw は Mach-O の綴り（C シンボルに接頭辞 `_`）に揃える。spec の raw 照合
+    （banned_undefined の "_strcpy" 等）はこの綴りで書かれており、ELF の
+    "strcpy" のままでは一致せず検査が黙って空になる。demangle は nm の原綴りで行う
+    （GNU c++filt は ELF で "__Z..." を demangle しない）。
+
     返り値: (defined:[{raw,dem,type}], undefined:[{raw,dem,type}])
     """
+    prefix = "_" if is_elf(obj) else ""
     p = run(["nm", "-g", obj])
     if p.returncode != 0:
         raise RuntimeError(f"nm failed for {obj}: {p.stderr.strip()}")
@@ -85,8 +106,8 @@ def read_symbols(obj):
             defined_raw.append((typ, name))
     allnames = [n for _, n in defined_raw] + undef_raw
     dm = demangle(allnames)
-    defined = [{"raw": n, "dem": dm.get(n, n), "type": t} for t, n in defined_raw]
-    undefined = [{"raw": n, "dem": dm.get(n, n), "type": "U"} for n in undef_raw]
+    defined = [{"raw": prefix + n, "dem": dm.get(n, n), "type": t} for t, n in defined_raw]
+    undefined = [{"raw": prefix + n, "dem": dm.get(n, n), "type": "U"} for n in undef_raw]
     return defined, undefined
 
 
@@ -115,7 +136,7 @@ class Report:
 
 def check_object(name, obj, spec, rep, golden, update):
     defined, undefined = read_symbols(obj)
-    def_dem = sorted({s["dem"] for s in defined})
+    def_dem = sorted({golden_name(s["dem"]) for s in defined})
 
     # 目的1: present（使ったメソッドが実体化されている）
     for pat in spec.get("present", []):
@@ -155,6 +176,7 @@ def check_object(name, obj, spec, rep, golden, update):
         golden[name] = def_dem
         rep.note(f"[{name}] golden {'更新' if prev is not None else '新規作成'}: {len(def_dem)} defined symbols")
     else:
+        prev = sorted({golden_name(s) for s in prev})
         added = [s for s in def_dem if s not in prev]
         removed = [s for s in prev if s not in def_dem]
         if added or removed:
@@ -208,6 +230,9 @@ def main():
                     help="ソース走査ルート（複数指定可）")
     ap.add_argument("--golden", help="golden スナップショット JSON パス（spec からの相対も可）")
     ap.add_argument("--update", action="store_true", help="golden を再生成する")
+    ap.add_argument("--golden-tag",
+                    help="golden をツールチェイン別に分ける札（例 Darwin-arm64-AppleClang）。"
+                         "golden/symbols.json -> golden/symbols.<tag>.json")
     args = ap.parse_args()
 
     with open(args.spec) as f:
@@ -217,6 +242,12 @@ def main():
     golden_path = args.golden or spec.get("golden")
     if golden_path and not os.path.isabs(golden_path):
         golden_path = os.path.join(spec_dir, golden_path)
+    # defined シンボル集合は実体化・demangle の綴り（libc++ の std::__1 等）が
+    # ツールチェインで変わる。別ツールチェインの golden と比べると必ず落ち、
+    # --update で上書きすると元の基準が消えるので、札ごとに別ファイルにする。
+    if golden_path and args.golden_tag:
+        root, ext = os.path.splitext(golden_path)
+        golden_path = f"{root}.{args.golden_tag}{ext}"
     golden = {}
     if golden_path and os.path.exists(golden_path) and not args.update:
         with open(golden_path) as f:
