@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: ${{ matrix.os }} / ${{ matrix.compiler }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: gcc
+            cc: gcc
+            cxx: g++
+          - os: ubuntu-latest
+            compiler: clang
+            cc: clang
+            cxx: clang++
+          - os: macos-latest
+            compiler: apple-clang
+            cc: clang
+            cxx: clang++
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          cmake --version
+          "$CXX" --version
+
+      - name: Configure
+        run: cmake -S . -B build
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      # symcheck writes a new golden snapshot when none exists for this
+      # toolchain. Publish it so it can be reviewed and committed upstream.
+      - name: Collect new symcheck golden files
+        if: always()
+        run: git status --porcelain --untracked-files=all -- tests/symcheck/golden
+
+      - name: Upload new symcheck golden files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: symcheck-golden-${{ matrix.os }}-${{ matrix.compiler }}
+          path: tests/symcheck/golden/
+          if-no-files-found: ignore
+
+  sanitizers:
+    name: ubuntu-latest / ASan+UBSan
+    runs-on: ubuntu-latest
+    env:
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
