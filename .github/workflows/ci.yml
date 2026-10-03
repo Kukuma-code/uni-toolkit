@@ -16,11 +16,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             compiler: gcc
             cc: gcc
             cxx: g++
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             compiler: clang
             cc: clang
             cxx: clang++
@@ -32,7 +32,7 @@ jobs:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Toolchain
         run: |
@@ -56,19 +56,19 @@ jobs:
 
       - name: Upload new symcheck golden files
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: symcheck-golden-${{ matrix.os }}-${{ matrix.compiler }}
           path: tests/symcheck/golden/
           if-no-files-found: ignore
 
   sanitizers:
-    name: ubuntu-latest / ASan+UBSan
-    runs-on: ubuntu-latest
+    name: ubuntu-24.04 / ASan+UBSan
+    runs-on: ubuntu-24.04
     env:
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure
         run: >
