@@ -41,6 +41,8 @@ tests/symcheck/
   golden/symbols.<tag>.json  defined シンボル集合のスナップショット（ツールチェイン別・コミット対象）
 tests/test_symcheck_portable.py  symcheck 自体の不変条件（Mach-O/ELF で危険関数検出が空にならない・
                                  abi タグで golden が落ちない。ctest: symcheck_portable）
+tests/test_symcheck_probe_deps.py probe の .o が include 先ヘッダの変更で作り直されること
+                                 （depfile。ctest: symcheck_probe_deps）
 ```
 
 被験体 probe は「使う想定のメソッドだけ」を呼ぶ最小 TU。どれを使うかを probe が

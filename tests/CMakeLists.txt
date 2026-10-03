@@ -71,17 +71,24 @@ add_test(NAME inherit_test COMMAND inherit_test)
 # probe は「使う想定」メソッドだけを odr-use する最小 TU（main 無し）。
 set(PROBE_INHERIT_O ${CMAKE_CURRENT_BINARY_DIR}/probe_inherit.o)
 set(PROBE_UNI_O     ${CMAKE_CURRENT_BINARY_DIR}/probe_uni.o)
+# probe が include するヘッダは depfile（-MD -MF）で依存に載せる。DEPENDS に .cpp しか
+# 書かないと src/ のヘッダを変えても .o が作り直されず、symcheck が古い .o を検査して
+# 黙って PASS する（増分ビルドだけ。tests/test_symcheck_probe_deps.py）。
 add_custom_command(
 	OUTPUT ${PROBE_INHERIT_O}
 	COMMAND ${CMAKE_CXX_COMPILER} -std=c++17 -I ${CMAKE_CURRENT_SOURCE_DIR}
+	        -MD -MF ${PROBE_INHERIT_O}.d
 	        -c ${CMAKE_CURRENT_SOURCE_DIR}/symcheck/probe_inherit.cpp -o ${PROBE_INHERIT_O}
-	DEPENDS symcheck/probe_inherit.cpp inherit/inherit_fixture.h
+	DEPENDS symcheck/probe_inherit.cpp
+	DEPFILE ${PROBE_INHERIT_O}.d
 	COMMENT "Compiling symcheck probe (inherit fixture)")
 add_custom_command(
 	OUTPUT ${PROBE_UNI_O}
 	COMMAND ${CMAKE_CXX_COMPILER} -std=c++17 -I ${CMAKE_SOURCE_DIR}/src
+	        -MD -MF ${PROBE_UNI_O}.d
 	        -c ${CMAKE_CURRENT_SOURCE_DIR}/symcheck/probe_uni.cpp -o ${PROBE_UNI_O}
 	DEPENDS symcheck/probe_uni.cpp
+	DEPFILE ${PROBE_UNI_O}.d
 	COMMENT "Compiling symcheck probe (uni__ production)")
 add_custom_target(symcheck_probes DEPENDS ${PROBE_INHERIT_O} ${PROBE_UNI_O})
 
@@ -98,6 +105,11 @@ if(PYTHON3)
 	add_test(NAME symcheck_portable COMMAND ${PYTHON3}
 		${CMAKE_CURRENT_SOURCE_DIR}/test_symcheck_portable.py)
 	set_tests_properties(symcheck_portable PROPERTIES
+		ENVIRONMENT "CXX=${CMAKE_CXX_COMPILER}")
+	# probe の .o がヘッダの変更で作り直されること（不変条件。写した木で configure する）
+	add_test(NAME symcheck_probe_deps COMMAND ${PYTHON3}
+		${CMAKE_CURRENT_SOURCE_DIR}/test_symcheck_probe_deps.py)
+	set_tests_properties(symcheck_probe_deps PROPERTIES
 		ENVIRONMENT "CXX=${CMAKE_CXX_COMPILER}")
 	# symcheck は probe .o に依存する。CTest は custom target を直接は待たないため、
 	# fixture 機構で probe ビルドを前段テストとして直列化する。
