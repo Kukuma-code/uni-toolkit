@@ -54,7 +54,8 @@
  *   mnode_refcnt_info / mnode_header_info / mnode_info の prn 出力体裁、
  *   DP_MNODE デバッグ計装。
  *********************************************/
-#include <cstddef>      /* std::size_t */
+#include <cstddef>      /* std::size_t, offsetof */
+#include <cstring>      /* std::memcpy */
 #include <type_traits>  /* is_trivially_destructible */
 #include "../types.h"
 #include "../result.h"
@@ -118,20 +119,32 @@ inline mnode_* mnode_header(const void* _ref){
 	return (mnode_*)((unsigned char*)_ref - sizeof(mnode_));
 }
 
-/* 型付きヘッダ取得（原典 PRE(MNODE_,get) の決定的版）。
-   _ref はその型のオブジェクト先頭を指していること。 */
-template <typename X>
-inline mnode_* mnode_get(const X* _ref){
-	constexpr size_ cookie = mnode_new_header<X>();
-	mnode_* direct = mnode_header(_ref);
-	if (cookie == 0) return direct;
+/* ヘッダ位置の判別本体（型を持たない）。cookie は mnode_new_header<X>() の値。
+   **真のヘッダと決まるまで mnode_* を通して読まない。** new[] の direct 候補は
+   cookie ぶんずれた位置で、cookie が整列幅より小さい ABI（x86-64 は 8 バイト）では
+   16 バイト境界に乗らない。そこを mnode_* のメンバとして読むと整列違反の
+   未定義動作になる（x86-64 の UBSan が mem_test / derived_test で検出。AArch64 は
+   cookie が 16 バイトなので現れない）。state 語はバイト列から memcpy で読む。 */
+inline mnode_* mnode_locate(const void* _ref, size_ cookie){
+	const unsigned char* direct = (const unsigned char*)_ref - sizeof(mnode_);
+	if (cookie == 0) return (mnode_*)direct;
 	/* 非トリビアル型: スカラ new なら direct が真のヘッダで USED が立ち
 	   CLASS_ARRAY は落ちている。new[] なら direct の state 読み位置は
 	   0 化済み領域（ヘッダ pad_ または cookie プレフィックス）にあたり
 	   必ず 0 を読む。よって排他に判別できる（ファイル冒頭 3) 参照）。 */
-	if ((direct->state & MALLOCATOR::USED) &&
-	    !(direct->state & MALLOCATOR::CLASS_ARRAY)) return direct;
-	return (mnode_*)((unsigned char*)_ref - sizeof(mnode_) - cookie);
+	unsigned int st;
+	std::memcpy(&st, direct + offsetof(mnode_, state), sizeof st);
+	if ((st & MALLOCATOR::USED) && !(st & MALLOCATOR::CLASS_ARRAY))
+		return (mnode_*)direct;
+	return (mnode_*)(direct - cookie);
+}
+
+/* 型付きヘッダ取得（原典 PRE(MNODE_,get) の決定的版）。
+   _ref はその型のオブジェクト先頭を指していること。 */
+template <typename X>
+inline mnode_* mnode_get(const X* _ref){
+	constexpr size_ cookie = mnode_new_header<X>();   /* 定数で渡す（-O0 で関数を実体化させない） */
+	return mnode_locate(_ref, cookie);
 }
 
 /* 原典 mnode_header_ref: NULL 許容版 */

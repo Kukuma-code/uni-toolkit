@@ -65,7 +65,8 @@
         "std::terminate",
         "typeinfo",
         "vtable",
-        "__cxxabiv1"
+        "__cxxabiv1",
+        "__stack_chk_"
       ],
       "banned_undefined": [
         "_gets",

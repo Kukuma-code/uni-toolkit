@@ -10,6 +10,7 @@
  *   5. 実 ABI（AppleClang/AArch64 Itanium）での cookie 判別:
  *      非トリビアル型の new[] / スカラ new / トリビアル配列の三態で
  *      mnode_get / qty / decr_or_delete(delete か delete[] か) が正しいこと
+ *   5b. cookie 8 バイト（x86-64）の幾何での判別と、ずれた候補を読まないこと
  *   6. 静的初期化中の new（遅延 init）の安全性
  *
  * この実行ファイルは mem_global_new をリンクするため、std コンテナ等の
@@ -139,6 +140,23 @@ int main(){
 	assert(mnode_qty_class(ca) == 0);                /* cookie 無し -> 0（原典どおり） */
 	{ bool r = mnode_refcnt_incr(ca); assert(r); }
 	mnode_refcnt_decr_or_delete(ca);                 /* flag により delete[] が選ばれる */
+
+	/* --- 5b. cookie が整列幅より小さい ABI の幾何（どの ABI でも検査する） ---
+	   x86-64 の new[] cookie は 8 バイトで、direct 候補が 16 バイト境界から外れる。
+	   AArch64 の cookie は 16 バイトなので 5. ではこの形を通らない。ヘッダを
+	   手で並べ、判別が正しいことと、ずれた候補を mnode_* として読まないこと
+	   （UBSan ビルドで alignment 違反が出ないこと）を確かめる。 */
+	{
+		alignas(MALLOCATOR_ALIGN) unsigned char geo[sizeof(MNODE_) * 3] = {};
+		mnode_* h = (mnode_*)geo;
+		const size_ x86_cookie = sizeof(std::size_t);
+		h->state = MALLOCATOR::USED | MALLOCATOR::CLASS_ARRAY;  /* new[]: pad_ と cookie 先頭は 0 */
+		const unsigned char* elem = geo + sizeof(MNODE_) + x86_cookie;
+		assert(((std::uintptr_t)(elem - sizeof(MNODE_)) % MALLOCATOR_ALIGN) != 0);  /* 候補はずれている */
+		assert(mnode_locate(elem, x86_cookie) == h);
+		h->state = MALLOCATOR::USED;                            /* スカラ new: 直前が真のヘッダ */
+		assert(mnode_locate(geo + sizeof(MNODE_), x86_cookie) == h);
+	}
 
 	/* --- 6. 静的初期化中の new と全リセット --- */
 	assert(mallocator.is_memory(g_early));
