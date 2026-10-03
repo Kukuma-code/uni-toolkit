@@ -219,7 +219,10 @@ int main(){
 	}
 
 	/* --- 8a. slist_: add / 検索 / del / insert / enlarge --- */
-	unsigned char* slab0 = nullptr;
+	/* スラブは new lnode__[qty]（非トリビアル型の配列 = cookie 付き）の先頭要素。
+	   ヘッダは型付きの mnode_get で引く（untyped の mnode_header は cookie を知らず、
+	   cookie ぶん手前のずれた位置を読む） */
+	lnode__<char, char*, string_>* slab0 = nullptr;
 	char* node0 = nullptr;
 	{
 		slist_ sl;                               /* 初期スラブ 0x20 ノード */
@@ -232,7 +235,8 @@ int main(){
 		string_* p_cc = sl.add((char*)"cccc");
 		assert(p_bb != nullptr && p_cc != nullptr);
 		assert(sl.is_qty() == 3);
-		slab0 = (unsigned char*)sl.head();
+		slab0 = sl.head();
+		assert(is_mnode_class_array(mnode_get(slab0)));   /* 判別が真のヘッダに届く */
 		node0 = (*sl.head())();
 		assert(mallocator.is_memory(node0));
 
@@ -305,7 +309,7 @@ int main(){
 		sl.info();
 	}
 	/* --- 9. スコープ終了: 先頭スラブと文字列ノードがアリーナへ返る --- */
-	assert(!(mnode_header(slab0)->state & MALLOCATOR::USED));
+	assert(!(mnode_get(slab0)->state & MALLOCATOR::USED));
 	assert(!(mnode_header(node0)->state & MALLOCATOR::USED));
 
 	/* --- 8b. スカラ list: add_t_ndx / simple_sort / move --- */
