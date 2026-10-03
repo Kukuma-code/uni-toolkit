@@ -81,3 +81,33 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  # Clang instruments differently from GCC (for example, it poisons new[]
+  # array cookies), so the allocator's ASan handling is exercised here.
+  # Kept as a separate job so the name of the GCC job above stays stable.
+  sanitizers-clang:
+    name: ubuntu-24.04 / clang ASan+UBSan
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain
+        run: |
+          cmake --version
+          "$CXX" --version
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
