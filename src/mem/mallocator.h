@@ -48,6 +48,25 @@
 #include "../result.h"
 #include "mnode.h"
 
+/* ASan 連携。clang の ASan は new[] の配列 cookie を毒化するが、解除は自前
+   ヒープでしか行わない。このアリーナでは解放後も毒が残り、同じ番地の再確保で
+   正当な書込みが heap-buffer-overflow と報告される（x86-64 Linux / clang 18 で
+   実測）。解放時にノード全体の毒を外す。 */
+#if defined(__has_feature)
+#  if __has_feature(address_sanitizer)
+#    define MALLOCATOR_ASAN 1
+#  endif
+#endif
+#if defined(__SANITIZE_ADDRESS__) && !defined(MALLOCATOR_ASAN)
+#  define MALLOCATOR_ASAN 1
+#endif
+#ifdef MALLOCATOR_ASAN
+#  include <sanitizer/asan_interface.h>
+#  define MALLOCATOR_UNPOISON(p, n) ASAN_UNPOISON_MEMORY_REGION((p), (n))
+#else
+#  define MALLOCATOR_UNPOISON(p, n) ((void)(p), (void)(n))
+#endif
+
 #define PAGE_SZ 4096u
 #ifndef MALLOCATOR_ALLOC_LEAST
 #define MALLOCATOR_ALLOC_LEAST 1
@@ -201,6 +220,7 @@ class mallocator_ {
 		if ( !(tmp->state & MALLOCATOR::USED) ) return;   /* 冪等（原典準拠） */
 		tmp->state = 0;
 		share -= tmp->size + sizeof(MNODE_);
+		MALLOCATOR_UNPOISON(tmp, tmp->size + sizeof(MNODE_));   /* 配列 cookie の毒を外す */
 		/* 後続の空きノードを併合（原典準拠: 前方向のみ） */
 		MNODE_* tmp2 = next_node(tmp);
 		while ( (unsigned char*)tmp2 < current && !(tmp2->state & MALLOCATOR::USED) ){

@@ -184,6 +184,17 @@ inline qty_ mnode_qty(const void* _ref, size_ _size){
 	return (qty_)(mnode_header(_ref)->provided_size / _size);
 }
 
+/* ABI cookie の要素数（先頭要素の直前の size_t）を読む。
+   ASan は new[] の cookie を毒化しており（x86-64 Linux で実測、shadow 'ac'）、
+   利用者コードからの読みを heap-buffer-overflow と報告する。ここは ABI 契約
+   どおりの意図的な読み出しなので、この 1 関数だけ address 検査を外す。 */
+#if defined(__GNUC__)
+__attribute__((no_sanitize("address")))
+#endif
+inline std::size_t mnode_cookie_count(const void* _ref){
+	return *(const std::size_t*)((const unsigned char*)_ref - sizeof(std::size_t));
+}
+
 /* 型付き数量。クラス配列（cookie 有り）は ABI が格納した要素数を直接読む
    （原典は cookie 先頭 1 バイトだけを読んでおり要素数 256 以上で破綻して
    いた——全幅読み出しに修正）。それ以外は provided_size / sizeof(A)。 */
@@ -194,8 +205,7 @@ inline qty_ mnode_qty(const A* _ref){
 	if (cookie != 0){
 		mnode_* hdr = mnode_get(_ref);
 		if (is_mnode_class_array(hdr))
-			return (qty_)*(const std::size_t*)
-			       ((const unsigned char*)_ref - sizeof(std::size_t));
+			return (qty_)mnode_cookie_count(_ref);
 	}
 	return (qty_)(mnode_header(_ref)->provided_size / sizeof(A));
 }
@@ -208,8 +218,7 @@ inline qty_ mnode_qty_class(const A* _ref){
 	if (cookie == 0) return 0;
 	mnode_* hdr = mnode_get(_ref);
 	if (!is_mnode_class_array(hdr)) return 0;
-	return (qty_)*(const std::size_t*)
-	       ((const unsigned char*)_ref - sizeof(std::size_t));
+	return (qty_)mnode_cookie_count(_ref);
 }
 
 /* --- 参照カウント ---

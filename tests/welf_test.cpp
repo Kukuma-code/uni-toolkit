@@ -106,7 +106,9 @@ void build_elf_file(){
 	memcpy(&image[OFS_RELA], &rela, sizeof(rela));
 
 	elf_shdr_ sh[6];
-	memset(sh, 0, sizeof(sh));
+	/* elf_shdr_ は空の user 定義 ctor を持つ（trivially copyable だが非トリビアル型）。
+	   void* 経由で GCC の -Wclass-memaccess を避ける。 */
+	memset(static_cast<void*>(sh), 0, sizeof(sh));
 	sh[1].name = 1;  sh[1].type = SHT_STRTAB;   sh[1].ofs = OFS_SHSTRTAB; sh[1].size = sizeof(shstr);
 	sh[2].name = 11; sh[2].type = SHT_SYMTAB;   sh[2].ofs = OFS_SYMTAB;   sh[2].size = sizeof(syms);
 	sh[2].link = 3;  sh[2].entsize = sizeof(elf_sym_);
