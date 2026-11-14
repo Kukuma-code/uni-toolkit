@@ -1,0 +1,4 @@
+.envrc
+.DS_Store
+.envrc.local
+.claude/session.local.md
